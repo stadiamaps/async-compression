@@ -1,0 +1,141 @@
+name: CI
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: cargo test
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+        - { toolchain: stable, target: i686-pc-windows-msvc, os: windows-latest }
+        - { toolchain: stable, target: i686-unknown-linux-gnu, os: ubuntu-latest }
+        - { toolchain: stable, target: x86_64-apple-darwin, os: macos-latest }
+        - { toolchain: stable, target: x86_64-pc-windows-msvc, os: windows-latest }
+        - { toolchain: stable, target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
+        - { toolchain: beta, target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
+        - { toolchain: nightly, target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
+    runs-on: ${{ matrix.platform.os }}
+    steps:
+    - uses: actions/checkout@v2
+    - uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: ${{ matrix.platform.toolchain }}
+        targets: ${{ matrix.platform.target }}
+    - uses: actions-rs/cargo@v1
+      with:
+        toolchain: ${{ matrix.platform.toolchain }}
+        command: test
+        args: --all --locked --all-features
+
+  features:
+    name: cargo hack check --each-feature
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: hecrj/setup-rust-action@v1
+    - uses: actions-rs/cargo@v1
+      with:
+        command: install
+        args: cargo-hack
+    - uses: actions-rs/cargo@v1
+      with:
+        command: hack
+        args: check --each-feature --no-dev-deps
+
+  update:
+    name: cargo build --update
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: hecrj/setup-rust-action@v1
+    - uses: actions-rs/cargo@v1
+      with:
+        command: update
+        args: --aggressive
+    - uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --all --locked --all-features
+
+  fmt:
+    name: cargo fmt --check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: hecrj/setup-rust-action@v1
+      with: { components: rustfmt }
+    - uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: --all -- --check
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: hecrj/setup-rust-action@v1
+      with: { components: clippy }
+    - uses: actions-rs/cargo@v1
+      with:
+        command: clippy
+        args: --all --all-targets --all-features --locked -- -D warnings
+
+  codecov:
+    name: codecov
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+    - uses: actions-rs/tarpaulin@v0.1
+      with:
+        args: --all-features
+    - uses: codecov/codecov-action@v1
+
+  docs:
+    name: docs.rs
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: '--cfg=docsrs -Dwarnings'
+    steps:
+    - uses: actions/checkout@v2
+    - uses: hecrj/setup-rust-action@v1
+      with:
+        rust-version: nightly
+    - uses: actions-rs/cargo@v1
+      with:
+        command: doc
+        toolchain: nightly
+        args: --no-default-features --no-deps
+    - uses: actions-rs/cargo@v1
+      with:
+        command: doc
+        toolchain: nightly
+        args: --all-features --no-deps
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: hecrj/setup-rust-action@v1
+    - uses: actions-rs/cargo@v1
+      with:
+        command: install
+        args: cargo-audit
+    - uses: actions-rs/cargo@v1
+      with:
+        command: audit
+
+on:
+  push:
+    branches: [staging, trying]
+  pull_request:
+    branches: [master]
+  schedule:
+  - cron: '0 0 */7 * *'
